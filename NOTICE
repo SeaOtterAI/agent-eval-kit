@@ -1,0 +1,12 @@
+agent-eval-kit
+Copyright 2026 SeaOtter
+
+This product includes software developed at SeaOtter (https://seaotter.ai).
+
+The default hosted backend is SeaOtter's OtterScore critic. The kit is
+backend-agnostic: point AGENT_EVAL_API_URL at any compatible eval API.
+
+"SeaOtter" and "OtterScore" are trademarks of SeaOtter. Use of the software
+under the Apache License 2.0 does not grant permission to use these marks
+except as required for reasonable and customary use in describing the origin
+of the software.

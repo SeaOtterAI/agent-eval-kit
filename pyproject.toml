@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-eval-kit"
+version = "0.1.0"
+description = "Wire any agent into an adversarial work-quality critic — submit work in any modality, get conditional adversarial feedback, iterate until it passes the gate."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "SeaOtter", email = "oss@seaotter.ai" }]
+keywords = ["agent", "evaluation", "critic", "mcp", "llm", "otterscore", "acceptance", "multimodal"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = []  # pure stdlib (urllib) by default
+
+[project.optional-dependencies]
+# Faster/robust HTTP transport. Falls back to urllib when absent.
+http = ["httpx>=0.24"]
+# The MCP server (stdio + streamable-http transports). cryptography powers the
+# hosted gateway's OAuth 2.1 flow (Fernet-encrypted codes/tokens — oauth.py).
+mcp = ["mcp>=1.0", "cryptography>=42"]
+# Self-host the hosted streamable-HTTP MCP gateway.
+server = ["mcp>=1.0", "cryptography>=42", "httpx>=0.24", "uvicorn>=0.30"]
+# Everything needed to run the test suite.
+dev = ["pytest>=7", "pytest-asyncio>=0.23", "httpx>=0.24", "mcp>=1.0", "cryptography>=42", "ruff>=0.4"]
+
+[project.urls]
+Homepage = "https://github.com/SeaOtterAI/agent-eval-kit"
+Repository = "https://github.com/SeaOtterAI/agent-eval-kit"
+Issues = "https://github.com/SeaOtterAI/agent-eval-kit/issues"
+
+[project.scripts]
+agent-eval-mcp = "agent_eval_kit.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+agent_eval_kit = ["py.typed"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501", "B008"]

@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "agent-eval": {
+      "command": "python",
+      "args": ["-m", "agent_eval_kit.mcp_server"],
+      "env": {
+        "AGENT_EVAL_API_URL": "https://api.seaotter.ai",
+        "AGENT_EVAL_API_KEY": "sk-otter-...",
+        "AGENT_EVAL_POLICY_ID": "acme-prod-acceptance"
+      }
+    }
+  }
+}
