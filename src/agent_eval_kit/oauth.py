@@ -33,6 +33,7 @@ Configuration (env):
   AGENT_EVAL_AUTH_CHECK_PATH     — authed, side-effect-free GET used to validate a
                                    pasted key (default ``/api/v1/billing/status``).
   AGENT_EVAL_DOCS_URL            — documentation link advertised in metadata.
+  AGENT_EVAL_OAUTH_SCOPE         — scope label in metadata/tokens (default ``eval``).
 """
 
 from __future__ import annotations
@@ -54,7 +55,11 @@ _CODE_TTL = 90          # authorization code: seconds
 _ACCESS_TTL = 3600      # access token: 1 hour
 _REFRESH_TTL = 30 * 24 * 3600  # refresh token: 30 days
 
-_SCOPE = "eval"
+def _scope() -> str:
+    """OAuth scope label advertised in metadata + token responses
+    (``AGENT_EVAL_OAUTH_SCOPE``, default ``eval``)."""
+    return os.getenv("AGENT_EVAL_OAUTH_SCOPE", "eval")
+
 
 # Connector OAuth callbacks we trust (host-based allow-list — prevents open
 # redirect / code exfiltration). Anthropic (claude.ai/.com) + OpenAI ChatGPT
@@ -150,7 +155,7 @@ def authorization_server_metadata(issuer: str) -> dict[str, Any]:
         "grant_types_supported": ["authorization_code", "refresh_token"],
         "code_challenge_methods_supported": ["S256"],
         "token_endpoint_auth_methods_supported": ["none"],
-        "scopes_supported": [_SCOPE],
+        "scopes_supported": [_scope()],
     }
 
 
@@ -215,7 +220,7 @@ def validate_authorize(params: dict[str, str]) -> dict[str, str]:
         "redirect_uri": redirect_uri,
         "code_challenge": challenge,
         "state": params.get("state", ""),
-        "scope": params.get("scope", _SCOPE),
+        "scope": params.get("scope", _scope()),
     }
 
 
@@ -269,7 +274,7 @@ def exchange_code(form: dict[str, str]) -> dict[str, Any]:
         "token_type": "Bearer",
         "expires_in": _ACCESS_TTL,
         "refresh_token": _refresh_token(key),
-        "scope": _SCOPE,
+        "scope": _scope(),
     }
 
 
@@ -289,7 +294,7 @@ def refresh_token_grant(form: dict[str, str]) -> dict[str, Any]:
         "token_type": "Bearer",
         "expires_in": _ACCESS_TTL,
         "refresh_token": _refresh_token(key),
-        "scope": _SCOPE,
+        "scope": _scope(),
     }
 
 

@@ -20,7 +20,9 @@ Initial public release. Extracted and generalized from SeaOtter's internal
 - Hosted multi-tenant streamable-HTTP MCP gateway (`agent_eval_kit.server_http`)
   with stateless OAuth 2.1 + PKCE and a paste-key consent page.
 - Configuration via `AGENT_EVAL_*` environment variables; backend defaults to
-  SeaOtter's hosted OtterScore critic and is overridable.
+  SeaOtter's hosted OtterScore critic and is overridable. The hosted gateway's
+  OAuth scope label is configurable via `AGENT_EVAL_OAUTH_SCOPE` (default `eval`),
+  so an overlay deployment can preserve a product-specific scope.
 
 ### Changed from the internal `otterloop` package
 - Renamed package `otterloop` → `agent_eval_kit`, client `OtterLoopClient` →

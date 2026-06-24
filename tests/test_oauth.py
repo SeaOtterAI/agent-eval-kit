@@ -203,3 +203,17 @@ def test_validate_api_key_fails_closed_on_network_error(monkeypatch):
 
 def test_validate_api_key_rejects_wrong_prefix():
     assert oauth.validate_api_key("not-a-key", "http://x") is False
+
+
+def test_oauth_scope_is_configurable(monkeypatch):
+    monkeypatch.setenv("AGENT_EVAL_OAUTH_SCOPE", "otterscore")
+    asm = oauth.authorization_server_metadata("https://mcp.example.com")
+    assert asm["scopes_supported"] == ["otterscore"]
+    cid = _register()
+    verifier, challenge = _pkce()
+    ctx = oauth.validate_authorize({"response_type": "code", "client_id": cid, "redirect_uri": _CALLBACK,
+                                    "code_challenge": challenge, "code_challenge_method": "S256"})
+    assert ctx["scope"] == "otterscore"
+    tok = oauth.exchange_code({"code": oauth.issue_code(_KEY, ctx), "code_verifier": verifier,
+                               "client_id": cid, "redirect_uri": _CALLBACK})
+    assert tok["scope"] == "otterscore"

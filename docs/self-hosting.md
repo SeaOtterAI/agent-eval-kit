@@ -69,6 +69,7 @@ OAuth client can discover the authorization server.
 | `AGENT_EVAL_AUTH_CHECK_PATH` | `/api/v1/billing/status` | authed, side-effect-free GET used to validate a pasted key before issuing a code |
 | `AGENT_EVAL_SIGNUP_URL` | `https://seaotter.ai/developers` | "get a key" link on the consent page |
 | `AGENT_EVAL_DOCS_URL` | the repo URL | documentation link in OAuth metadata |
+| `AGENT_EVAL_OAUTH_SCOPE` | `eval` | scope label advertised in OAuth metadata + token responses |
 | `AGENT_EVAL_GATEWAY_HOST` | `localhost` | host used to build OAuth issuer metadata when no `Host`/`x-forwarded-proto` header is forwarded |
 | `OPENAI_APPS_CHALLENGE_TOKEN` | — | enables the ChatGPT Apps domain-verification route |
 
