@@ -148,6 +148,55 @@ class EvalClient:
                 return []
             raise
 
+    def list_stored_policies(self) -> list[dict[str, Any]]:
+        """YOUR tenant's authored, reusable acceptance policies (``/api/v1/policies``).
+
+        These are the versioned, tenant-scoped policies created via
+        :meth:`upsert_policy`; reference one by its id as ``policy_id`` in
+        :meth:`score`. Returns [] when the deployment has none or the route is
+        unavailable (requires an authenticated key)."""
+        try:
+            return (self._req("GET", "/api/v1/policies") or {}).get("policies", [])
+        except EvalError as e:
+            if e.status in (401, 403, 404):
+                return []
+            raise
+
+    def upsert_policy(
+        self,
+        policy_id: str,
+        *,
+        name: str | None = None,
+        hard_rules: list[dict[str, Any]] | None = None,
+        conditioning: dict[str, Any] | None = None,
+        bands: dict[str, Any] | None = None,
+        modality_scope: list[str] | None = None,
+        visibility: str = "team",
+    ) -> dict[str, Any]:
+        """Author (or update) a reusable, versioned acceptance policy for your tenant.
+
+        Creates the policy on first call (POST) and bumps a new version on
+        subsequent calls (PUT). Reference it by ``policy_id`` in :meth:`score`.
+        ``conditioning`` is the soft critic layer (``policy_prior`` /
+        ``refuse_to_flatter`` / ``pushback_required`` / ``min_high_weight_criteria``);
+        ``hard_rules`` are deterministic gates; ``bands`` are the decision
+        thresholds. All only ever TIGHTEN the hostile-by-default critic."""
+        body: dict[str, Any] = {
+            "id": policy_id,
+            "name": name or policy_id,
+            "visibility": visibility,
+            "modality_scope": modality_scope or ["*"],
+            "hard_rules": hard_rules or [],
+            "conditioning": conditioning or {},
+            "bands": bands or {},
+        }
+        try:
+            return self._req("POST", "/api/v1/policies", body)
+        except EvalError as e:
+            if e.status == 409:  # already exists -> update (new version)
+                return self._req("PUT", f"/api/v1/policies/{policy_id}", body)
+            raise
+
     # -- the loop ----------------------------------------------------------
     def score(
         self,
@@ -156,6 +205,8 @@ class EvalClient:
         modality: str | None = None,
         rubric_id: str | None = None,
         policy_id: str | None = None,
+        policy: dict[str, Any] | None = None,
+        critic_prompt: str | None = None,
         intent: str | None = None,
         prompt: str | None = None,
         references: list[Any] | None = None,
@@ -166,7 +217,15 @@ class EvalClient:
         name: str | None = None,
     ) -> Verdict:
         """Submit work (any modality) → Verdict. Conditioned on org (``policy_id``/
-        ``rubric_id``), prompt (``prompt``/``intent``), and files (``references``)."""
+        ``rubric_id``), prompt (``prompt``/``intent``), and files (``references``).
+
+        Bring Your Own Policy (BYOP): pass ``policy`` to grade against your OWN
+        acceptance bar in a single call — a dict of
+        ``{directives[], criteria[], instructions, bands, hard_rules[], extends}``,
+        composed onto the hostile base rubric (tighten-only). ``critic_prompt`` is a
+        free-text hostile-critic instruction override. Both are additive to the
+        defaults; neither can make the critic lenient.
+        """
         mod, parts = _modality.normalize(work, modality=modality, mime=mime, name=name)
         body = {
             "modality": mod,
@@ -182,6 +241,10 @@ class EvalClient:
         pid = policy_id or self.policy_id
         if pid:
             body["policy_id"] = pid
+        if policy:
+            body["policy"] = policy
+        if critic_prompt:
+            body["critic_prompt"] = critic_prompt
         if cost_cap_usd is not None:
             body["cost_cap_usd"] = cost_cap_usd
         resp = self._req("POST", "/api/v1/eval/runs", body)
@@ -201,6 +264,8 @@ class EvalClient:
         modality: str | None = None,
         rubric_id: str | None = None,
         policy_id: str | None = None,
+        policy: dict[str, Any] | None = None,
+        critic_prompt: str | None = None,
         intent: str | None = None,
         prompt: str | None = None,
         references: list[Any] | None = None,
@@ -212,7 +277,10 @@ class EvalClient:
     ) -> dict[str, Any]:
         """Submit work for grading as an async job. Returns the job envelope
         ``{job_id, status, poll_url, ...}`` immediately (HTTP 202). Poll with
-        :meth:`poll_job` until ``status == 'completed'``, then :meth:`run_verdict`."""
+        :meth:`poll_job` until ``status == 'completed'``, then :meth:`run_verdict`.
+
+        Supports BYOP (``policy`` / ``critic_prompt``) — same semantics as
+        :meth:`score`."""
         mod, parts = _modality.normalize(work, modality=modality, mime=mime, name=name)
         body: dict[str, Any] = {
             "mode": mode,
@@ -230,6 +298,10 @@ class EvalClient:
         pid = policy_id or self.policy_id
         if pid:
             body["policy_id"] = pid
+        if policy:
+            body["policy"] = policy
+        if critic_prompt:
+            body["critic_prompt"] = critic_prompt
         if cost_cap_usd is not None:
             body["cost_cap_usd"] = cost_cap_usd
         return self._req("POST", "/api/v1/eval/jobs", body)
@@ -256,6 +328,8 @@ class EvalClient:
         modality: str | None = None,
         rubric_id: str | None = None,
         policy_id: str | None = None,
+        policy: dict[str, Any] | None = None,
+        critic_prompt: str | None = None,
         intent: str | None = None,
         prompt: str | None = None,
         references: list[Any] | None = None,
@@ -306,6 +380,10 @@ class EvalClient:
         pid = policy_id or self.policy_id
         if pid:
             body["policy_id"] = pid
+        if policy:
+            body["policy"] = policy
+        if critic_prompt:
+            body["critic_prompt"] = critic_prompt
         if cost_cap_usd is not None:
             body["cost_cap_usd"] = cost_cap_usd
         yield from self._stream_sse("/api/v1/eval/stream", body)
