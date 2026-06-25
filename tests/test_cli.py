@@ -47,7 +47,24 @@ def test_init_claude_writes_hook_and_standing(otter_home, tmp_path):
     assert any("validate.py" in c and "--harness claude" in c for c in cmds)
     mcp = json.loads((proj / ".mcp.json").read_text())
     assert mcp["mcpServers"]["otterscore"]["url"].startswith("https://mcp.seaotter.ai")
+    # bearer auth must be wired, or a headless agent's every otter_score call 401s
+    assert mcp["mcpServers"]["otterscore"]["headers"]["Authorization"] == "Bearer ${OTTER_API_KEY}"
     assert "otter:begin external-validation" in (proj / "CLAUDE.md").read_text()
+
+
+def test_init_codex_wires_mcp_bearer(otter_home, tmp_path, monkeypatch):
+    # Codex rejects inline bearer_token and needs bearer_token_env_var; without it the
+    # otter_score MCP tool 401s for an autonomous agent. Codex install is HOME-scoped.
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    assert cli.main(["init", "codex", "--project", str(proj)]) == 0
+    cfg = (tmp_path / "home" / ".codex" / "config.toml").read_text()
+    assert "[mcp_servers.otterscore]" in cfg
+    assert 'bearer_token_env_var = "OTTER_API_KEY"' in cfg
+    # re-running must not duplicate the table (idempotent self-heal)
+    assert cli.main(["init", "codex", "--project", str(proj)]) == 0
+    assert (tmp_path / "home" / ".codex" / "config.toml").read_text().count("[mcp_servers.otterscore]") == 1
 
 
 def test_init_git_writes_pre_push(otter_home, tmp_path):

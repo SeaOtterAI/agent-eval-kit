@@ -28,6 +28,13 @@ OTTER_HOME = Path(os.environ.get("OTTER_HOME", str(Path.home() / ".otter")))
 HOOK = OTTER_HOME / "validate.py"
 STANDING = OTTER_HOME / "standing"
 MCP_URL = "https://mcp.seaotter.ai/mcp"
+# The env var every harness reads at RUNTIME for the MCP bearer token. The hosted
+# gateway accepts a plain `sk-otter-…` key as a bearer (no interactive OAuth), so an
+# autonomous agent only needs this one env var exported to USE the otter_score tool.
+MCP_BEARER_ENV = "OTTER_API_KEY"
+# Authorization header most MCP clients (Claude Code, Cursor, OpenClaw) expand from the
+# environment at runtime via ${VAR}. Stored literally so the secret never lands on disk.
+MCP_AUTH_HEADER = {"Authorization": f"Bearer ${{{MCP_BEARER_ENV}}}"}
 BEGIN, END = "otter:begin external-validation", "otter:end external-validation"
 
 
@@ -103,6 +110,43 @@ def _toml_str(s: str) -> str:
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def upsert_codex_mcp(cfg: Path) -> str:
+    """Write/repair the managed `[mcp_servers.otterscore]` table in Codex's config.toml,
+    INCLUDING the bearer auth Codex needs to actually reach the hosted gateway. Codex
+    rejects an inline `bearer_token` and requires `bearer_token_env_var`, so we point it
+    at OTTER_API_KEY (read at runtime). Self-heals a legacy url-only block written before
+    auth was wired — without that, the agent's every otter_score call 401s. Returns
+    added|updated|unchanged."""
+    begin, end = "# otter:begin mcp otterscore (managed)", "# otter:end mcp otterscore (managed)"
+    block = (f'{begin}\n[mcp_servers.otterscore]\nurl = "{MCP_URL}"\n'
+             f'bearer_token_env_var = "{MCP_BEARER_ENV}"\n{end}\n')
+    text = cfg.read_text() if cfg.exists() else ""
+    if begin in text and end in text:                                  # replace managed region
+        b = text.index(begin)
+        ls = text.rfind("\n", 0, b) + 1
+        e = text.index(end) + len(end)
+        nl = text.find("\n", e)
+        e = len(text) if nl == -1 else nl + 1
+        new = text[:ls] + block + text[e:]
+        action = "unchanged" if new == text else "updated"
+    elif "[mcp_servers.otterscore]" in text:                           # legacy unmarked -> replace table
+        hb = text.index("[mcp_servers.otterscore]")
+        ls = text.rfind("\n", 0, hb) + 1
+        prev = text.rfind("\n", 0, ls - 1) + 1 if ls > 0 else 0        # absorb a leading "# otter:" comment line
+        if ls > 0 and text[prev:ls].strip().startswith("# otter:"):
+            ls = prev
+        ne = text.find("\n[", hb + len("[mcp_servers.otterscore]"))    # table ends at next table or EOF
+        te = len(text) if ne == -1 else ne + 1
+        new = text[:ls].rstrip("\n") + ("\n\n" if text[:ls].strip() else "") + block + text[te:]
+        action = "updated"
+    else:                                                              # fresh append
+        new = text + ("" if not text or text.endswith("\n") else "\n") + "\n" + block
+        action = "added"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(new)
+    return action
+
+
 # ------------------------------------------------------------------------- claude
 def install_claude(opts: argparse.Namespace) -> None:
     root = Path.home() / ".claude" if opts.is_global else Path(opts.project) / ".claude"
@@ -129,12 +173,18 @@ def install_claude(opts: argparse.Namespace) -> None:
     # MCP: durable project .mcp.json + best-effort CLI registration.
     mcp_path = (Path.home() / ".mcp.json") if opts.is_global else (Path(opts.project) / ".mcp.json")
     mcp = load_json(mcp_path)
-    mcp.setdefault("mcpServers", {})["otterscore"] = {"type": "http", "url": MCP_URL}
+    # Wire the bearer header so a HEADLESS Claude Code agent reaches the gateway without
+    # the interactive OAuth dance. Claude Code expands ${OTTER_API_KEY} from the env at
+    # runtime, so the secret is never written to .mcp.json.
+    mcp.setdefault("mcpServers", {})["otterscore"] = {
+        "type": "http", "url": MCP_URL, "headers": dict(MCP_AUTH_HEADER)}
     save_json(mcp_path, mcp)
-    info(f"MCP otter_score tool -> {mcp_path}")
+    info(f"MCP otter_score tool (bearer via ${MCP_BEARER_ENV}) -> {mcp_path}")
     if shutil.which("claude"):
-        subprocess.run(["claude", "mcp", "add", "--transport", "http", "otterscore", MCP_URL],
-                       capture_output=True, text=True)
+        subprocess.run(["claude", "mcp", "remove", "otterscore"], capture_output=True, text=True)
+        subprocess.run(["claude", "mcp", "add", "--transport", "http",
+                        "--header", f"Authorization: Bearer ${{{MCP_BEARER_ENV}}}",
+                        "otterscore", MCP_URL], capture_output=True, text=True)
 
     # /otter-validate slash command.
     cmd_md = root / "commands" / "otter-validate.md"
@@ -153,14 +203,8 @@ def install_claude(opts: argparse.Namespace) -> None:
 # -------------------------------------------------------------------------- codex
 def install_codex(opts: argparse.Namespace) -> None:
     cfg = Path.home() / ".codex" / "config.toml"
-    cfg.parent.mkdir(parents=True, exist_ok=True)
-    text = cfg.read_text() if cfg.exists() else ""
-    if "[mcp_servers.otterscore]" not in text:
-        block = f'\n# otter: external validation (managed)\n[mcp_servers.otterscore]\nurl = "{MCP_URL}"\n'
-        cfg.write_text(text + block)
-        info(f"MCP otter_score tool -> {cfg} [mcp_servers.otterscore]")
-    else:
-        info(f"MCP otter_score already in {cfg}")
+    action = upsert_codex_mcp(cfg)
+    info(f"MCP otter_score tool ({action}; bearer via ${MCP_BEARER_ENV}) -> {cfg} [mcp_servers.otterscore]")
 
     # Blocking Stop hook (requires a one-time `codex` trust approval) -> separate file.
     hooks_toml = Path.home() / ".codex" / "otter-hooks.toml"
@@ -183,9 +227,9 @@ def install_openclaw(opts: argparse.Namespace) -> None:
     cfg = Path.home() / ".openclaw" / "openclaw.json"
     obj = load_json(cfg)
     agents = obj.setdefault("agents", {}).setdefault("defaults", {})
-    agents.setdefault("mcpServers", {})["otterscore"] = {"url": MCP_URL}
+    agents.setdefault("mcpServers", {})["otterscore"] = {"url": MCP_URL, "headers": dict(MCP_AUTH_HEADER)}
     save_json(cfg, obj)
-    info(f"MCP otter_score tool -> {cfg} (agents.defaults.mcpServers)")
+    info(f"MCP otter_score tool (bearer via ${MCP_BEARER_ENV}) -> {cfg} (agents.defaults.mcpServers)")
 
     ws = Path.home() / ".openclaw" / "workspace"
     for name in ("SOUL.md", "AGENTS.md"):
@@ -217,9 +261,9 @@ def install_cursor(opts: argparse.Namespace) -> None:
     proj = Path(opts.project)
     mcp_path = proj / ".cursor" / "mcp.json"
     mcp = load_json(mcp_path)
-    mcp.setdefault("mcpServers", {})["otterscore"] = {"url": MCP_URL}
+    mcp.setdefault("mcpServers", {})["otterscore"] = {"url": MCP_URL, "headers": dict(MCP_AUTH_HEADER)}
     save_json(mcp_path, mcp)
-    info(f"MCP otter_score tool -> {mcp_path}")
+    info(f"MCP otter_score tool (bearer via ${MCP_BEARER_ENV}) -> {mcp_path}")
     rule = proj / ".cursor" / "rules" / "otter-validate.mdc"
     rule.parent.mkdir(parents=True, exist_ok=True)
     body = standing("AGENTS.md")
@@ -280,16 +324,18 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  ! {name}: {exc}")
 
     key = os.environ.get("OTTER_API_KEY") or os.environ.get("SEAOTTER_API_KEY")
-    print("\nDone. One thing left — the validator needs a key to reach OtterScore:")
+    print("\nDone. One key powers BOTH the end-of-task hook AND the otter_score MCP tool.")
+    print("It must be exported in the environment your AGENT runs in (the harness reads it")
+    print("at runtime), so add it to your shell profile to make it stick:")
     if key:
         print(f"  ✓ OTTER_API_KEY is set ({key[:12]}…).")
     else:
-        print("  Get a free key and export it (add to your shell profile to make it stick):")
         print("    export OTTER_API_KEY=$(curl -s https://api.seaotter.ai/api/v1/agent-keys/signup \\")
         print("      -H 'content-type: application/json' -d '{\"email\":\"you@example.com\"}' \\")
         print("      | python3 -c 'import sys,json;print(json.load(sys.stdin)[\"api_key\"])')")
     print("\nFrom now on, your agent validates its work with the hostile OtterScore critic")
-    print("before it can call a task done. Verify any time:  python3 ~/.otter/validate.py --help")
+    print("before it can call a task done — via the hook automatically, or the otter_score")
+    print("tool any time. Verify:  python3 ~/.otter/validate.py --help")
     return 0
 
 
