@@ -203,6 +203,16 @@ def gather_work(args: argparse.Namespace, payload: dict) -> tuple[list[dict], st
         diff = _git(["diff", "--no-color", "HEAD"], cwd)
         if not diff.strip():
             diff = _git(["diff", "--no-color", "--staged"], cwd)
+        # The agent usually COMMITS before it finishes (and a pre-push hook fires only
+        # AFTER commit), so the working-tree + staged diffs are empty exactly when we
+        # most need to grade. Fall back to what's being pushed, then the last commit —
+        # otherwise the gate would grade nothing and wave committed work straight through.
+        if not diff.strip():
+            diff = _git(["diff", "--no-color", "@{push}..HEAD"], cwd)
+        if not diff.strip():
+            diff = _git(["diff", "--no-color", "@{upstream}..HEAD"], cwd)
+        if not diff.strip():
+            diff = _git(["diff", "--no-color", "HEAD~1", "HEAD"], cwd)
         if diff.strip():
             head = _git(["log", "-1", "--format=%h %s"], cwd).strip()
             label = f"git diff @ {head}" if head else "git diff"

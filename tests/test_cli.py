@@ -67,6 +67,37 @@ def test_init_codex_wires_mcp_bearer(otter_home, tmp_path, monkeypatch):
     assert (tmp_path / "home" / ".codex" / "config.toml").read_text().count("[mcp_servers.otterscore]") == 1
 
 
+def test_init_claude_backs_up_unparseable_json(otter_home, tmp_path):
+    # A malformed .mcp.json must NOT be silently destroyed — it's backed up first.
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / ".mcp.json").write_text('{"mcpServers": {"github": {}},}')  # trailing comma
+    assert cli.main(["init", "claude", "--project", str(proj)]) == 0
+    baks = list(proj.glob(".mcp.json.otter-bak*"))
+    assert baks and "github" in baks[0].read_text(), "user config not preserved on parse failure"
+
+
+def test_codex_hostile_policy_id_keeps_valid_toml(otter_home, tmp_path, monkeypatch):
+    # A --policy-id with a newline must not break config.toml (control chars escaped).
+    tomllib = pytest.importorskip("tomllib")
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    assert cli.main(["init", "codex", "--enforce", "--policy-id", "acme\nINJECT", "--project", str(proj)]) == 0
+    cfg = (tmp_path / "home" / ".codex" / "config.toml").read_text()
+    tomllib.loads(cfg)  # raises if the newline corrupted the file
+
+
+def test_init_git_pre_push_not_strict(otter_home, tmp_path):
+    # The git gate must fail OPEN on infra/no-key (no --strict), or it wedges every push.
+    proj = tmp_path / "repo"
+    proj.mkdir()
+    subprocess.run(["git", "init", "-q"], cwd=proj, check=True)
+    assert cli.main(["init", "git", "--project", str(proj)]) == 0
+    hook = (proj / ".git" / "hooks" / "pre-push").read_text()
+    assert "validate.py" in hook and "--strict" not in hook
+
+
 def test_init_git_writes_pre_push(otter_home, tmp_path):
     proj = tmp_path / "repo"
     proj.mkdir()

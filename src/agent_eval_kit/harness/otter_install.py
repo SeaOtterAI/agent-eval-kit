@@ -49,8 +49,26 @@ def py_cmd() -> str:
 
 def load_json(path: Path) -> dict:
     try:
-        return json.loads(path.read_text())
-    except (OSError, json.JSONDecodeError):
+        raw = path.read_text()
+    except OSError:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # The file exists but doesn't parse (trailing comma, JSONC comment, mid-edit).
+        # We're about to rewrite it with only the otter-managed object, so NEVER silently
+        # destroy the user's content — back it up first and tell them where it went.
+        if raw.strip():
+            bak = path.with_suffix(path.suffix + ".otter-bak")
+            n = 1
+            while bak.exists():
+                bak = path.with_suffix(path.suffix + f".otter-bak{n}")
+                n += 1
+            try:
+                bak.write_text(raw)
+                info(f"⚠ {path} was not valid JSON — backed it up to {bak} before rewriting")
+            except OSError:
+                pass
         return {}
 
 
@@ -105,9 +123,43 @@ def hook_cmd(harness: str, opts: argparse.Namespace) -> str:
 
 
 def _toml_str(s: str) -> str:
-    """A TOML basic (double-quoted) string literal that safely encodes any command —
-    backslashes and double quotes are escaped per the TOML spec."""
-    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """A TOML basic (double-quoted) string literal that safely encodes ANY value:
+    backslash and double-quote AND the control chars TOML forbids raw inside a basic
+    string (newline, CR, NUL … U+001F, and U+007F). shlex.quote() (used upstream for
+    --policy-id) is SHELL quoting and passes a stray newline through unchanged — without
+    these escapes a policy id with a trailing newline would emit an illegal basic string
+    and break the user's whole config.toml parse."""
+    out = []
+    for ch in s:
+        if ch == "\\":
+            out.append("\\\\")
+        elif ch == '"':
+            out.append('\\"')
+        elif ch == "\n":
+            out.append("\\n")
+        elif ch == "\r":
+            out.append("\\r")
+        elif ch == "\t":
+            out.append("\\t")
+        elif ord(ch) < 0x20 or ord(ch) == 0x7F:
+            out.append(f"\\u{ord(ch):04X}")
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def _toml_ok(text: str) -> bool:
+    """True if `text` parses as TOML — or if we can't check (python < 3.11 has no
+    tomllib). Used as a write-guard so the installer NEVER leaves a corrupt config.toml."""
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        return True
+    try:
+        tomllib.loads(text)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def upsert_codex_mcp(cfg: Path) -> str:
@@ -135,13 +187,34 @@ def upsert_codex_mcp(cfg: Path) -> str:
         prev = text.rfind("\n", 0, ls - 1) + 1 if ls > 0 else 0        # absorb a leading "# otter:" comment line
         if ls > 0 and text[prev:ls].strip().startswith("# otter:"):
             ls = prev
-        ne = text.find("\n[", hb + len("[mcp_servers.otterscore]"))    # table ends at next table or EOF
-        te = len(text) if ne == -1 else ne + 1
+        # table ends at the next SIBLING header — skip child subtables like
+        # [mcp_servers.otterscore.env] so a stale child can't survive the heal.
+        scan = hb + len("[mcp_servers.otterscore]")
+        while True:
+            ne = text.find("\n[", scan)
+            if ne == -1:
+                te = len(text)
+                break
+            header = text[ne + 1:text.find("\n", ne + 1) if text.find("\n", ne + 1) != -1 else len(text)]
+            if header.startswith("[mcp_servers.otterscore.") or header.startswith("[mcp_servers.otterscore]"):
+                scan = ne + 1                                          # a child/dup of otterscore -> keep absorbing
+                continue
+            te = ne + 1
+            break
         new = text[:ls].rstrip("\n") + ("\n\n" if text[:ls].strip() else "") + block + text[te:]
         action = "updated"
+    elif "mcp_servers.otterscore" in text:                             # dotted/inline form we can't safely auto-edit
+        raise RuntimeError(
+            f"otterscore is already defined in {cfg} in a dotted/inline form I won't rewrite "
+            f'blindly. Add `bearer_token_env_var = "{MCP_BEARER_ENV}"` to it by hand so the '
+            "otter_score MCP tool authenticates.")
     else:                                                              # fresh append
         new = text + ("" if not text or text.endswith("\n") else "\n") + "\n" + block
         action = "added"
+    if not _toml_ok(new):                                              # never leave a corrupt config.toml
+        raise RuntimeError(
+            f"refusing to edit {cfg}: the result would not be valid TOML. Add "
+            f'`[mcp_servers.otterscore]` with url + bearer_token_env_var = "{MCP_BEARER_ENV}" by hand.')
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(new)
     return action
@@ -162,6 +235,8 @@ def _upsert_marked_toml(cfg: Path, begin: str, end: str, block: str) -> str:
     else:
         new = text + ("" if not text or text.endswith("\n") else "\n") + "\n" + block
         action = "added"
+    if not _toml_ok(new):                                             # never leave a corrupt config.toml
+        raise RuntimeError(f"refusing to edit {cfg}: the result would not be valid TOML.")
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(new)
     return action
@@ -315,7 +390,11 @@ def install_git(opts: argparse.Namespace) -> None:
         raise SystemExit(f"otter: {proj} is not a git repo — run inside one, or use --project DIR")
     hook = git_dir / "hooks" / "pre-push"
     hook.parent.mkdir(parents=True, exist_ok=True)
-    line = f'{hook_cmd("git", opts)} --strict --source diff || exit 1'
+    # NOT --strict: a real route_to_fix/quarantine/block verdict blocks the push anyway
+    # (exit 2), but we must fail OPEN on no-key / critic-warming / network — otherwise the
+    # normal "installed but key not exported yet" state would wedge EVERY push, the exact
+    # opposite of the fail-open promise in the docstring + llms.txt.
+    line = f'{hook_cmd("git", opts)} --source diff || exit 1'
     if hook.exists() and "validate.py" in hook.read_text():
         info(f"pre-push gate already present -> {hook}")
     else:
