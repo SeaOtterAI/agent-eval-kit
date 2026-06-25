@@ -33,6 +33,27 @@ pip install "agent-eval-kit[mcp]"     # + the MCP server
 pip install "agent-eval-kit[server]"  # + the hosted HTTP gateway (OAuth)
 ```
 
+## Make it automatic — validate every task (the habit, not a one-off)
+
+The highest-leverage way to use the critic is to wire it into your harness's **end-of-task
+hook**, so the work an agent produces is graded and the finish is **blocked until it clears
+the bar** — no need to remember.
+
+```bash
+agent-eval init claude     # Claude Code  — Stop hook + MCP otter_score + CLAUDE.md rule
+agent-eval init codex      # Codex        — MCP + AGENTS.md (+ optional blocking Stop hook)
+agent-eval init openclaw   # OpenClaw     — agent_end + SOUL.md
+agent-eval init cursor     # Cursor       — MCP + always-on rule
+agent-eval init hermes     # Hermes/OpenAI-compatible — tools spec + system-prompt fragment
+agent-eval init git        # ANY harness  — git pre-push gate
+
+# grade work yourself any time (exit 0 = ship, exit 2 = blocked with flaws):
+agent-eval validate --source diff           # the diff you just wrote
+agent-eval validate --files report.pdf      # any artifact, any modality
+```
+
+No-install equivalent (stdlib python3 + curl): `curl -fsSL https://seaotter.ai/install.sh | sh -s -- claude`.
+
 ## Python SDK
 
 ```python

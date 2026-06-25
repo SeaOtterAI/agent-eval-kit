@@ -1,0 +1,36 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "otter_grade",
+      "description": "Submit a work artifact to SeaOtter's OtterScore — an independent, hostile-by-default critic — for external validation against an acceptance policy. Returns an authoritative verdict you must act on before finishing: a band (ship / route_to_fix / quarantine / block), a score in [0,1], the located flaws (criterion, severity, detail, anchor), and concrete upgrades. Call this on any artifact (code, text, document, deck, spreadsheet, image, audio, video) BEFORE delivering it as final. If the band is not 'ship', fix the flaws and call again. Do not grade yourself; this critic is the authority.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "work": {
+            "type": "string",
+            "description": "The artifact to grade: inline text/code, a local file path, or a base64 data: URL (for images, video, audio, pdf, docx, pptx, xlsx)."
+          },
+          "modality": {
+            "type": "string",
+            "enum": ["text", "code", "image", "video", "audio", "deck", "spreadsheet", "document", "outcome_metric"],
+            "description": "The artifact modality. Optional — auto-detected from the file/content when omitted."
+          },
+          "intent": {
+            "type": "string",
+            "description": "What the task was trying to achieve. Conditions the critic; optional but improves grading."
+          },
+          "policy_id": {
+            "type": "string",
+            "description": "A stored SeaOtter acceptance policy id to grade against your team's bar. Optional; defaults to the hostile baseline rubric."
+          },
+          "rubric_id": {
+            "type": "string",
+            "description": "A specific per-modality rubric id. Optional."
+          }
+        },
+        "required": ["work"]
+      }
+    }
+  }
+]

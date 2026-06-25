@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`agent-eval` CLI — make external validation an everyday habit.**
+  - `agent-eval init <claude|codex|openclaw|cursor|hermes|git|all>` wires OtterScore into a
+    harness's end-of-task hook (Claude Code/Codex `Stop`, OpenClaw `agent_end`, git `pre-push`),
+    registers the MCP `otter_score` tool, and adds a standing-instruction block to
+    `AGENTS.md`/`CLAUDE.md`/`SOUL.md`. Idempotent.
+  - `agent-eval validate` grades the git diff / named files / a harness hook payload with the
+    hostile critic and exits `0` (ship) or `2` with located flaws (block) — the universal block
+    signal every supported harness feeds back into the loop. Multimodal (code/text/image/deck/
+    sheet/doc/audio/video). Fails open on infra errors, closed on a real verdict.
+  - Bundles the canonical stdlib validator + installer + standing templates (the same files
+    hosted at `seaotter.ai/install.sh`).
+
 ## [0.1.0] — 2026-06-24
 
 Initial public release. Extracted and generalized from SeaOtter's internal
