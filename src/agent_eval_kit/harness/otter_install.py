@@ -147,6 +147,37 @@ def upsert_codex_mcp(cfg: Path) -> str:
     return action
 
 
+def _upsert_marked_toml(cfg: Path, begin: str, end: str, block: str) -> str:
+    """Insert/replace a marker-delimited region in a TOML file. Returns added|updated|
+    unchanged. Coexists with other managed regions (e.g. the MCP block) in the same file."""
+    text = cfg.read_text() if cfg.exists() else ""
+    if begin in text and end in text:
+        b = text.index(begin)
+        ls = text.rfind("\n", 0, b) + 1
+        e = text.index(end) + len(end)
+        nl = text.find("\n", e)
+        e = len(text) if nl == -1 else nl + 1
+        new = text[:ls] + block + text[e:]
+        action = "unchanged" if new == text else "updated"
+    else:
+        new = text + ("" if not text or text.endswith("\n") else "\n") + "\n" + block
+        action = "added"
+    cfg.parent.mkdir(parents=True, exist_ok=True)
+    cfg.write_text(new)
+    return action
+
+
+def upsert_codex_hooks(cfg: Path, command: str) -> str:
+    """Write/repair a managed `[hooks.Stop]` block in config.toml so Codex runs the
+    validator when the agent tries to finish and BLOCKS the finish (hook exit 2) until the
+    work ships. This is the inline-hooks schema Codex 0.142 actually loads — the old
+    standalone `otter-hooks.toml` used a top-level `[[Stop]]` Codex never reads."""
+    begin, end = "# otter:begin hooks (managed)", "# otter:end hooks (managed)"
+    block = (f'{begin}\n[[hooks.Stop]]\nmatcher = ""\n\n[[hooks.Stop.hooks]]\n'
+             f'type = "command"\ncommand = {_toml_str(command)}\ntimeout = 180\n{end}\n')
+    return _upsert_marked_toml(cfg, begin, end, block)
+
+
 # ------------------------------------------------------------------------- claude
 def install_claude(opts: argparse.Namespace) -> None:
     root = Path.home() / ".claude" if opts.is_global else Path(opts.project) / ".claude"
@@ -206,17 +237,22 @@ def install_codex(opts: argparse.Namespace) -> None:
     action = upsert_codex_mcp(cfg)
     info(f"MCP otter_score tool ({action}; bearer via ${MCP_BEARER_ENV}) -> {cfg} [mcp_servers.otterscore]")
 
-    # Blocking Stop hook (requires a one-time `codex` trust approval) -> separate file.
-    hooks_toml = Path.home() / ".codex" / "otter-hooks.toml"
-    hooks_toml.write_text(
-        "# OtterGate Stop hook for Codex. To ENFORCE blocking, reference this from\n"
-        "# ~/.codex/config.toml and approve hook trust on next run. The MCP tool +\n"
-        "# AGENTS.md standing instruction below already make validation the habit.\n"
-        '[[Stop]]\nmatcher = ""\n\n[[Stop.hooks]]\ntype = "command"\n'
-        # TOML basic string with proper escaping — handles the "double quotes"
-        # around the hook path AND any single quotes shlex.quote() may add.
-        f"command = {_toml_str(hook_cmd('codex', opts))}\ntimeout = 180\n")
-    info(f"blocking Stop hook (optional, needs trust) -> {hooks_toml}")
+    # Remove the historical, malformed otter-hooks.toml: it used a top-level [[Stop]]
+    # in a standalone file that Codex never loads, so it enforced nothing.
+    legacy = Path.home() / ".codex" / "otter-hooks.toml"
+    if legacy.exists():
+        legacy.unlink()
+        info("removed stale, non-functional otter-hooks.toml (wrong schema; never loaded)")
+
+    if opts.enforce:
+        h_action = upsert_codex_hooks(cfg, hook_cmd("codex", opts))
+        info(f"HARD gate: blocking [hooks.Stop] ({h_action}) -> {cfg} — Codex can't finish "
+             "until OtterScore ships")
+        info("  approve it once in interactive `codex`, or run autonomous lanes with "
+             "`codex exec --dangerously-bypass-hook-trust`.")
+    else:
+        info("for a HARD end-of-task gate (Codex blocks the finish until the work ships), "
+             "re-run: otter install codex --enforce")
 
     target = (Path.home() / ".codex" / "AGENTS.md") if opts.is_global else (Path(opts.project) / "AGENTS.md")
     info(f"standing instruction ({upsert_block(target, standing('AGENTS.md'))}) -> {target}")
@@ -307,6 +343,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--project", default=os.getcwd(), help="project dir (default: cwd)")
     p.add_argument("--policy-id", default=os.environ.get("OTTER_POLICY_ID"))
     p.add_argument("--min-band", default=None, choices=["ship", "route_to_fix"])
+    p.add_argument("--enforce", action="store_true",
+                   help="wire a HARD blocking end-of-task gate where the harness needs it "
+                        "to be opt-in (Codex [hooks.Stop]); Claude's Stop hook and the git "
+                        "pre-push gate already block by default")
     opts = p.parse_args(argv)
 
     if not HOOK.exists():

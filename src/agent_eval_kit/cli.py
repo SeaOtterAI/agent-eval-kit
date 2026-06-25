@@ -1,8 +1,10 @@
 """agent-eval — make external validation an automatic, everyday habit in your harness.
 
     agent-eval init <claude|codex|openclaw|cursor|hermes|git|all> [--global] [--project DIR]
-        Wire OtterScore into the harness's end-of-task hook + a standing instruction, so
-        the work an agent produces is graded and the finish is blocked until it passes.
+                    [--enforce] [--policy-id ID] [--min-band ship|route_to_fix]
+        Wire OtterScore into the harness's MCP tool (bearer-auth'd) + end-of-task hook +
+        a standing instruction, so the work an agent produces is graded and the finish is
+        blocked until it passes. --enforce adds Codex's blocking [hooks.Stop] gate.
 
     agent-eval validate [--source diff|files|stdin] [--files F...] [--policy-id ID]
                         [--min-band ship|route_to_fix] [--strict]
