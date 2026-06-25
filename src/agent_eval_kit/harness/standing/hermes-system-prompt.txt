@@ -10,5 +10,11 @@ on that artifact. Then:
   - otherwise: revise the artifact to address every flaw the tool returned, call
     otter_grade again, and repeat until band == "ship" (or the policy's stated bar).
 You may not inflate your own verdict beyond what otter_grade returned; the critic is the
-authority, your prose is not. If otter_grade is unavailable, say so explicitly and treat
-the work as unvalidated — never fabricate a passing grade.
+authority, your prose is not.
+
+WARM-UP IS NOT FAILURE. OtterScore runs on a scale-to-zero GPU: the first grade after it
+has been idle can take up to ~6 minutes to load the model (it reports that it is warming /
+still running — that is warming, NOT an error). Poll patiently and let it finish; warm
+grades return in seconds. Only if otter_grade is genuinely unavailable after waiting out
+the warm-up do you say so explicitly and treat the work as unvalidated — never fabricate a
+passing grade, and never skip validation because the first call was slow.

@@ -3,7 +3,7 @@
     "type": "function",
     "function": {
       "name": "otter_grade",
-      "description": "Submit a work artifact to SeaOtter's OtterScore — an independent, hostile-by-default critic — for external validation against an acceptance policy. Returns an authoritative verdict you must act on before finishing: a band (ship / route_to_fix / quarantine / block), a score in [0,1], the located flaws (criterion, severity, detail, anchor), and concrete upgrades. Call this on any artifact (code, text, document, deck, spreadsheet, image, audio, video) BEFORE delivering it as final. If the band is not 'ship', fix the flaws and call again. Do not grade yourself; this critic is the authority.",
+      "description": "Submit a work artifact to SeaOtter's OtterScore — an independent, hostile-by-default critic — for external validation against an acceptance policy. Returns an authoritative verdict you must act on before finishing: a band (ship / route_to_fix / quarantine / block), a score in [0,1], the located flaws (criterion, severity, detail, anchor), and concrete upgrades. Call this on any artifact (code, text, document, deck, spreadsheet, image, audio, video) BEFORE delivering it as final. If the band is not 'ship', fix the flaws and call again. Do not grade yourself; this critic is the authority. WARM-UP: the critic is a scale-to-zero GPU — the first grade after it's idle can take up to ~6 minutes to load the model (a slow first call is warming up, not an error). Poll patiently; warm grades return in seconds. Never skip validation because the first call was slow.",
       "parameters": {
         "type": "object",
         "properties": {

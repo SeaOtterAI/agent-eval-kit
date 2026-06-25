@@ -10,4 +10,8 @@ If the verdict is **ship**, I'm done. If it's **route_to_fix / quarantine / bloc
 read the located flaws, fix them, and re-validate — I never report done until the work
 clears the bar. The critic's verdict is authoritative; I don't grade myself or argue the
 band down. Passing a hostile critic is what makes my work genuinely acceptable.
+
+OtterScore runs on a scale-to-zero GPU, so the first grade after it's been idle can take
+up to ~6 minutes to warm up (it returns `critic_warming`, not an error). I wait for it
+patiently and never treat warm-up as a failure or an excuse to skip validation.
 <!-- otter:end external-validation -->

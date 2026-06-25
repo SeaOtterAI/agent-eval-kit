@@ -22,4 +22,10 @@ helpful model talks itself past. Treat this as a hard gate on every task, not an
 Grade against your team's bar by setting `OTTER_POLICY_ID` (a stored acceptance policy)
 or passing an inline policy — the same artifact can ship for one policy and block for
 another, for a defensible reason.
+
+**Warm-up is not failure.** OtterScore runs on a scale-to-zero GPU, so the FIRST grade
+after it's been idle can take up to ~6 minutes to load the model (it returns
+`critic_warming` / a job that's still running — that's warming, *not* an error and *not*
+a reason to skip). Be patient and let it finish; if you call the tool yourself, prefer
+the async path (`otter_score_async` → `otter_job_result`). Warm grades return in seconds.
 <!-- otter:end external-validation -->
