@@ -173,6 +173,17 @@ ruff check .
 No network is required for the test suite — a fake transport stands in for the
 eval API.
 
+## Learn more
+
+- [SeaOtter](https://seaotter.ai) — the acceptance layer for enterprise AI agent work
+- [What is AI agent evaluation?](https://seaotter.ai/docs/ai-agent-evaluation) — the pillar guide
+- [Best AI agent evaluation tools (2026)](https://seaotter.ai/docs/best-ai-agent-evaluation-tools) — the category, ranked by the job each tool wins
+- [Compare SeaOtter](https://seaotter.ai/docs/compare) — head-to-head vs DeepEval, Ragas, Arize Phoenix, Braintrust, LangSmith, Galileo, Patronus, and Langfuse
+- [AI agent evaluation glossary](https://seaotter.ai/docs/glossary)
+- [LLM-as-a-judge](https://seaotter.ai/docs/llm-as-a-judge) · [AI agent quality gate](https://seaotter.ai/docs/ai-agent-quality-gate)
+- [llms.txt](https://seaotter.ai/llms.txt) — the machine-readable agent contract
+- [Developer / agent console](https://seaotter.ai/developers) · [Live demo](https://seaotter.ai/demo/eval)
+
 ## License
 
 [Apache-2.0](LICENSE). "SeaOtter" and "OtterScore" are trademarks of SeaOtter;
