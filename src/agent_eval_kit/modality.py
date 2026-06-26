@@ -15,6 +15,8 @@ import os
 from collections.abc import Iterable
 from typing import Any
 
+from .types import FileError
+
 # The modalities the eval API understands.
 MODALITIES = {
     "text", "code", "image", "deck", "spreadsheet", "document",
@@ -67,15 +69,36 @@ def _looks_like_code(text: str) -> bool:
     return hits >= 2
 
 
-def _is_path(s: str) -> bool:
+def _looks_like_path(s: str) -> bool:
+    """Path-SHAPED, regardless of whether the file exists on disk.
+
+    A ``file://`` URL, an explicit fs prefix (``/``, ``./``, ``../``, ``~``), or
+    a single-line bare-ish string with a known media/doc extension all *look*
+    like a local file the caller meant to grade. Existence is checked
+    separately so a missing ``report.pdf`` can be reported as an unreadable file
+    instead of being silently graded as the literal filename text.
+    """
     if s.startswith("file://"):
         return True
     if "\n" in s or len(s) > 1024:
         return False
     if s.startswith(("/", "./", "../", "~")):
         return True
-    # bare-ish path with a known media/doc extension that exists on disk
-    return _ext(s) in _EXT_MODALITY and os.path.exists(os.path.expanduser(s))
+    # bare-ish path with a known media/doc extension (e.g. ``report.pdf``).
+    return _ext(s) in _EXT_MODALITY
+
+
+def _is_path(s: str) -> bool:
+    """A path-shaped string that ALSO resolves to a real local file.
+
+    The happy path: a file that exists on disk → read it client-side. A
+    path-shaped string with no file behind it is handled by the caller (it is
+    an actionable :class:`FileError`, not silent fall-through to text)."""
+    if not _looks_like_path(s):
+        return False
+    if s.startswith("file://"):
+        return os.path.exists(os.path.expanduser(s[len("file://"):]))
+    return os.path.exists(os.path.expanduser(s))
 
 
 def _read_file_part(path: str) -> tuple[str, dict[str, Any]]:
@@ -89,14 +112,20 @@ def _read_file_part(path: str) -> tuple[str, dict[str, Any]]:
     modality = _EXT_MODALITY.get(ext, "")
     mime = _mime_for(name)
     text_modality = modality in ("text", "code") or (_modality_for_mime(mime) == "text")
-    if text_modality:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            body = fh.read()
-        return (modality or ("code" if _looks_like_code(body) else "text"),
-                {"mime_type": mime if mime != "application/octet-stream" else "text/plain",
-                 "text": body, "logical_name": name})
-    with open(path, "rb") as fh:
-        data = fh.read()
+    try:
+        if text_modality:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                body = fh.read()
+            return (modality or ("code" if _looks_like_code(body) else "text"),
+                    {"mime_type": mime if mime != "application/octet-stream" else "text/plain",
+                     "text": body, "logical_name": name})
+        with open(path, "rb") as fh:
+            data = fh.read()
+    except OSError as exc:
+        # FileNotFoundError/PermissionError/etc. become a typed, actionable
+        # error instead of a raw uncaught traceback — most often this is the
+        # hosted critic being handed a path it cannot see.
+        raise FileError(path, str(exc)) from exc
     return (modality or (_modality_for_mime(mime) or "document"),
             {"mime_type": mime, "data_b64": base64.b64encode(data).decode("ascii"),
              "logical_name": name})
@@ -138,6 +167,14 @@ def _one(work: Any, *, mime: str | None = None, name: str | None = None) -> tupl
             "mime_type": m, "uri": s, **({"logical_name": name} if name else {})}
     if _is_path(s):
         return _read_file_part(s)
+    # Path-SHAPED but no file behind it: a bare ``report.pdf`` / ``pitch.pptx``
+    # with a known media/doc extension, or an explicit ``file://`` ref, that
+    # does not exist locally. Do NOT silently grade the filename as text — that
+    # is the confirmed hosted-critic gap. Raise an actionable error instead.
+    # (A plain fs-prefixed path like ``./notes`` with NO known extension is left
+    #  to fall through to text, to keep arbitrary leading-slash strings working.)
+    if s.startswith("file://") or (_looks_like_path(s) and _ext(s) in _EXT_MODALITY):
+        raise FileError(s, "no such file (or not readable from here)")
     # plain inline text/code
     return ("code" if _looks_like_code(s) else "text"), {
         "mime_type": mime or "text/plain", "text": s,

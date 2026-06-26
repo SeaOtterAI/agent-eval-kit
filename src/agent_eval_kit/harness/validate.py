@@ -65,6 +65,8 @@ TERMINAL_STATES = (*TERMINAL_SUCCESS, "failed", "errored", "error", "cancelled")
 
 # Extension -> modality, mirroring the eval API's detector, so `--files` grades an
 # image as an image, a deck as a deck, a sheet as a sheet — every file modality.
+# NOTE: this is a deliberate stdlib-only copy for the zero-dependency hook; the
+# canonical extension map + file reader is agent_eval_kit.modality (keep in sync).
 _EXT_MODALITY = {
     ".md": "text", ".txt": "text", ".rst": "text", ".csv": "spreadsheet",
     ".py": "code", ".js": "code", ".ts": "code", ".tsx": "code", ".jsx": "code",
@@ -141,7 +143,11 @@ def _text_part(text: str, name: str) -> dict:
 def _file_part(path: str) -> tuple[str, dict] | None:
     """Read a file into an artifact_part. Text-ish files become a `text` part;
     everything else becomes a base64 `data_b64` part the eval API renders —
-    images, video, audio, pdf, docx, pptx, xlsx all flow through here."""
+    images, video, audio, pdf, docx, pptx, xlsx all flow through here.
+
+    Private stdlib-only copy of the reader in agent_eval_kit.modality (which is
+    canonical); kept separate so this hook stays zero-dependency. Already
+    handles an unreadable file by warning + returning None (correct here)."""
     path = os.path.expanduser(path)
     name = os.path.basename(path)
     modality = _modality_for(path) or "document"

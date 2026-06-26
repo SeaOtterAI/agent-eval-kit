@@ -51,10 +51,14 @@ def _flaw(crit, sev="high", anchor=None):
 
 # ---- score -------------------------------------------------------------------
 
-def test_score_builds_conditioned_request():
+def test_score_builds_conditioned_request(tmp_path):
     api = FakeAPI([_v(40, "route_to_fix", [_flaw("groundedness")])])
     c = EvalClient(base_url="http://x", policy_id="acme", locale="ja", transport=api)
-    v = c.score("some text", prompt="do the thing", references=["file://gold.md"])
+    # The reference must resolve to a real local file — the kit now refuses to
+    # ship an unreadable local ref the hosted critic could never resolve.
+    gold = tmp_path / "gold.md"
+    gold.write_text("# Gold standard\nbody")
+    v = c.score("some text", prompt="do the thing", references=[f"file://{gold}"])
     assert isinstance(v, Verdict) and v.run_id == "run-1"
     assert v.band == "route_to_fix" and v.score == 40.0
     assert v.flaws[0].criterion == "groundedness"
@@ -62,8 +66,20 @@ def test_score_builds_conditioned_request():
     assert body["policy_id"] == "acme" and body["locale"] == "ja"
     assert body["return_feedback_artifacts"] is True
     assert body["user_prompt"] == "do the thing"
-    assert body["references"][0]["artifact_ref"] == "file://gold.md"
+    assert body["references"][0]["artifact_ref"] == f"file://{gold}"
     assert body["artifact_ref"].startswith("inline:sha256:")
+
+
+def test_score_rejects_unreadable_local_reference():
+    """A reference to a local file that does not exist is an actionable error,
+    not a silently-unresolvable ref shipped to the hosted critic."""
+    from agent_eval_kit.types import FileError
+
+    api = FakeAPI([_v(90, "ship", [])])
+    c = EvalClient(base_url="http://x", transport=api)
+    with pytest.raises(FileError) as e:
+        c.score("some text", references=["file://does-not-exist.pdf"])
+    assert "base64" in str(e.value)  # tells the agent how to fix it
 
 
 def test_score_sends_bearer_when_key_set():

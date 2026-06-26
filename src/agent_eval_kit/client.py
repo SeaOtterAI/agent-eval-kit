@@ -26,7 +26,12 @@ from collections.abc import Callable, Iterator, Sequence
 from typing import Any
 
 from . import modality as _modality
-from .types import BANDS, Delta, IterationResult, Verdict
+from .types import BANDS, Delta, EvalError, FileError, IterationResult, Verdict
+
+# Re-exported for back-compat: callers do ``from agent_eval_kit.client import
+# EvalError``. The canonical definition now lives in ``types`` so the modality
+# normalizer can raise it without an import cycle.
+__all__ = ["EvalClient", "EvalError", "FileError", "DEFAULT_BASE_URL", "DEFAULT_RUBRIC"]
 
 # The reference hosted backend. Override with AGENT_EVAL_API_URL or base_url=.
 DEFAULT_BASE_URL = "https://api.seaotter.ai"
@@ -34,13 +39,6 @@ DEFAULT_RUBRIC = "enterprise-acceptance-default"
 
 # (method, url, headers, json_body) -> (status_code, parsed_json)
 Transport = Callable[[str, str, dict[str, str], dict[str, Any] | None], "tuple[int, Any]"]
-
-
-class EvalError(RuntimeError):
-    def __init__(self, status: int, detail: Any):
-        self.status = status
-        self.detail = detail
-        super().__init__(f"eval API error {status}: {detail}")
 
 
 def _content_ref(parts: Sequence[dict[str, Any]]) -> str:
@@ -572,15 +570,32 @@ def _parse_sse_lines(lines: Iterator[str]) -> Iterator[dict[str, Any]]:
 
 
 def _normalize_refs(references: list[Any] | None) -> list[dict[str, Any]]:
-    """Accept references as plain strings (paths/urls) or ref dicts."""
+    """Accept references as plain strings (paths/urls) or ref dicts.
+
+    A reference that names a LOCAL file (a ``file://`` URL or an on-disk path)
+    that cannot be read is rejected with the same actionable
+    :class:`~agent_eval_kit.types.FileError` the modality normalizer raises,
+    rather than being shipped as an ``artifact_ref`` the hosted critic can never
+    resolve. (Lower-risk choice: we still send readable local files / remote
+    URLs as plain refs — we only *fail loud* on an unreadable local ref instead
+    of reading and inlining its bytes, which would change the request shape.)
+    """
     out: list[dict[str, Any]] = []
     for r in references or []:
         if isinstance(r, dict):
             out.append(r)
             continue
         s = str(r)
-        kind = "text"
         low = s.lower()
+        # Guard local references: a file:// URL, or a path-shaped string that is
+        # not a remote/data URL. If it does not resolve locally, the hosted
+        # critic cannot read it either — surface the actionable fix now.
+        if not low.startswith(("http://", "https://", "data:")):
+            local = s[len("file://"):] if low.startswith("file://") else s
+            looks_local = low.startswith("file://") or _modality._looks_like_path(s)
+            if looks_local and not os.path.exists(os.path.expanduser(local)):
+                raise FileError(s, "no such file (or not readable from here)")
+        kind = "text"
         if any(low.endswith(e) for e in (".png", ".jpg", ".jpeg", ".gif", ".webp")):
             kind = "image"
         elif any(low.endswith(e) for e in (".mp4", ".mov", ".webm")):

@@ -15,6 +15,46 @@ BANDS = ("ship", "route_to_fix", "quarantine", "block")
 PASSING_BANDS = ("ship",)
 
 
+class EvalError(RuntimeError):
+    """Any failure talking to (or preparing work for) the eval critic.
+
+    Defined here in the dependency-free ``types`` module so both the HTTP
+    client and the modality normalizer can raise/catch it without an import
+    cycle. ``client`` re-exports it, so ``from agent_eval_kit import EvalError``
+    keeps working.
+    """
+
+    def __init__(self, status: int, detail: Any):
+        self.status = status
+        self.detail = detail
+        super().__init__(f"eval API error {status}: {detail}")
+
+
+class FileError(EvalError):
+    """A local file/reference the kit was asked to read could not be read.
+
+    Carries an ACTIONABLE message: the most common cause is calling the HOSTED
+    critic with a local path the remote server cannot see, so the fix is to
+    base64-encode the bytes into a ``data:`` URL. ``status`` is 0 because this
+    is a client-side preparation failure, not an HTTP status.
+    """
+
+    def __init__(self, path: str, reason: str):
+        self.path = path
+        self.reason = reason
+        msg = (
+            f"cannot read local file {path!r}: {reason}. "
+            "If you are calling the HOSTED critic, it cannot read your "
+            "filesystem — base64-encode the file into a data: URL "
+            "(data:<mime>;base64,...) instead."
+        )
+        # Skip EvalError.__init__'s "eval API error {status}" framing: a file
+        # prep failure isn't an API status, and the message above is complete.
+        self.status = 0
+        self.detail = msg
+        RuntimeError.__init__(self, msg)
+
+
 def _f(v: Any, default: float = 0.0) -> float:
     try:
         return float(v)
