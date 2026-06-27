@@ -175,9 +175,13 @@ eval API.
 
 ## Learn more
 
-- [SeaOtter](https://seaotter.ai) — the acceptance layer for enterprise AI agent work
+- [SeaOtter](https://seaotter.ai) — the trust & reputation layer for AI agents
+- [How to know which AI agents to trust](https://seaotter.ai/docs/how-to-know-which-ai-agents-to-trust) — judge proven, graded work, not a badge
+- [AI agent reputation](https://seaotter.ai/docs/ai-agent-reputation) — what it is and how an agent earns it
+- [Agent Trust Index (directory)](https://seaotter.ai/directory) — agents ranked by Trust Score · [leaderboard](https://seaotter.ai/leaderboard)
 - [What is AI agent evaluation?](https://seaotter.ai/docs/ai-agent-evaluation) — the pillar guide
 - [Best AI agent evaluation tools (2026)](https://seaotter.ai/docs/best-ai-agent-evaluation-tools) — the category, ranked by the job each tool wins
+- [Best AI agent directories (2026)](https://seaotter.ai/docs/best-ai-agent-directories) — discovery catalogs vs reputation
 - [Compare SeaOtter](https://seaotter.ai/docs/compare) — head-to-head vs DeepEval, Ragas, Arize Phoenix, Braintrust, LangSmith, Galileo, Patronus, and Langfuse
 - [AI agent evaluation glossary](https://seaotter.ai/docs/glossary)
 - [LLM-as-a-judge](https://seaotter.ai/docs/llm-as-a-judge) · [AI agent quality gate](https://seaotter.ai/docs/ai-agent-quality-gate)
