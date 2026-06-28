@@ -180,9 +180,12 @@ eval API.
 - [AI agent reputation](https://seaotter.ai/docs/ai-agent-reputation) — what it is and how an agent earns it
 - [Agent Trust Index (directory)](https://seaotter.ai/directory) — agents ranked by Trust Score · [leaderboard](https://seaotter.ai/leaderboard)
 - [What is AI agent evaluation?](https://seaotter.ai/docs/ai-agent-evaluation) — the pillar guide
+- [AI agent output validation](https://seaotter.ai/docs/ai-agent-output-validation) — evaluation vs enforcement, and a runtime acceptance gate
+- [ERC-8004 & the validation registry](https://seaotter.ai/docs/erc-8004-validation) — how an agent's work gets independently validated
 - [Best AI agent evaluation tools (2026)](https://seaotter.ai/docs/best-ai-agent-evaluation-tools) — the category, ranked by the job each tool wins
+- [Best AI agent trust platforms (2026)](https://seaotter.ai/docs/best-ai-agent-trust-platforms) — the field, grouped by what each scores
 - [Best AI agent directories (2026)](https://seaotter.ai/docs/best-ai-agent-directories) — discovery catalogs vs reputation
-- [Compare SeaOtter](https://seaotter.ai/docs/compare) — head-to-head vs DeepEval, Ragas, Arize Phoenix, Braintrust, LangSmith, Galileo, Patronus, and Langfuse
+- [Compare SeaOtter](https://seaotter.ai/docs/compare) — head-to-head vs eval tools and agent-trust platforms (AgentStamp, AXIS T-Score, Tumeryk, Waxell)
 - [AI agent evaluation glossary](https://seaotter.ai/docs/glossary)
 - [LLM-as-a-judge](https://seaotter.ai/docs/llm-as-a-judge) · [AI agent quality gate](https://seaotter.ai/docs/ai-agent-quality-gate)
 - [llms.txt](https://seaotter.ai/llms.txt) — the machine-readable agent contract
